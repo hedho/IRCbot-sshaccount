@@ -12,10 +12,11 @@ chomp @nicknames;
 my @sockets;
 my $counter = 0;
 my $num_bots = 500;
-my $wait_time = 0.5;
+my $wait_time = 0.2;
+my $overall_bot_limit = 500;
 
 foreach my $nick (@nicknames) {
-    last if $counter >= $num_bots;
+    last if $counter >= $num_bots || $counter >= $overall_bot_limit;
     
     my $socket = IO::Socket::INET->new(
         PeerAddr => 'irc.shoqni.com',
