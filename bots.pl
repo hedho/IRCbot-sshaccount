@@ -10,22 +10,28 @@ my @nicknames = <$fh>;
 chomp @nicknames;
 
 my @sockets;
-
 my $counter = 0;
-foreach my $nick (@nicknames) {
-    last if $counter >= 450;
+my $num_bots = 500;
+my $wait_time = 0.5;
 
+foreach my $nick (@nicknames) {
+    last if $counter >= $num_bots;
+    
     my $socket = IO::Socket::INET->new(
         PeerAddr => 'irc.shoqni.com',
         PeerPort => 6667,
         Proto    => 'tcp',
-    ) or die "Could not create socket: $!";
-
+    );
+    
+    if (!$socket) {
+        next;
+    }
+    
     push @sockets, $socket;
-
     print $socket "NICK $nick\r\n";
     print $socket "USER $nick 8 * :$nick\r\n";
     $counter++;
+    select(undef, undef, undef, $wait_time);
 }
 
 my $select = IO::Select->new(@sockets);
