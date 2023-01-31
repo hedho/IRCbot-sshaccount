@@ -2,53 +2,80 @@
 
 use strict;
 use warnings;
-use IO::Socket::INET;
-use IO::Select;
+use IO::Socket;
+use List::Util qw(min);
 
-open(my $fh, "<", "nicks.txt") or die "Could not open file: $!";
-my @nicknames = <$fh>;
-chomp @nicknames;
+# Open the file containing a list of nicknames
+open(my $fh, "<", "nicks.txt") or die "Can't open file: $!";
 
-my @sockets;
-my $counter = 0;
-my $num_bots = 500;
-my $wait_time = 0.2;
-my $overall_bot_limit = 500;
+# Define the maximum number of bots to connect
+my $max_bots = 500;
 
-foreach my $nick (@nicknames) {
-    last if $counter >= $num_bots || $counter >= $overall_bot_limit;
-    
-    my $socket = IO::Socket::INET->new(
-        PeerAddr => 'irc.shoqni.com',
-        PeerPort => 6667,
-        Proto    => 'tcp',
-    );
-    
-    if (!$socket) {
-        next;
-    }
-    
-    push @sockets, $socket;
-    print $socket "NICK $nick\r\n";
-    print $socket "USER $nick 8 * :$nick\r\n";
-    $counter++;
-    select(undef, undef, undef, $wait_time);
-}
+# Keep track of the number of bots that have connected
+my $num_bots = 0;
 
-my $select = IO::Select->new(@sockets);
+# Loop through each nickname in the file
+while (my $nick = <$fh>) {
+  chomp($nick);
 
-while (1) {
-    my @ready = $select->can_read(1);
-    foreach my $socket (@ready) {
-        my $input = <$socket>;
-        if ($input =~ /004/) {
-            print $socket "JOIN #test\r\n";
-        } elsif ($input =~ /PING :(.*)/) {
-            print $socket "PONG :$1\r\n";
+  # Limit the number of bots to the maximum defined
+  last if $num_bots >= $max_bots;
+
+  # Connect to the IRC server using a new socket for each nickname
+  my $socket = IO::Socket::INET->new(
+    PeerAddr => "irc.example.com",
+    PeerPort => 6667,
+    Proto => "tcp",
+  ) or die "Can't connect to server: $!";
+
+  # Send the nickname to the server
+  print $socket "NICK $nick\r\n";
+
+  # Send the user information to the server
+  print $socket "USER $nick 0 * :$nick\r\n";
+
+  # Increment the number of bots that have connected
+  $num_bots++;
+
+  # Fork a new process to handle the connection for this bot
+  my $pid = fork();
+  if (!defined $pid) {
+    # Error in fork, so close the socket and continue to the next bot
+    close($socket);
+    next;
+  } elsif ($pid == 0) {
+    # Child process: Loop to receive messages from the server and respond to them
+    while (1) {
+      # Read a line from the socket
+      my $line = <$socket>;
+
+      # Check if the line is defined (the socket is still open)
+      if (defined $line) {
+        # Check if the server is asking for the nickname to be registered
+        if ($line =~ /^PING\s*:(.*)/) {
+          my $ping = $1;
+          print $socket "PONG :$ping\r\n";
         }
+
+        # Check if the server has accepted the nickname
+        if ($line =~ /^.* 001 $nick/) {
+          # Join the #text channel
+          print $socket "JOIN #text\r\n";
+        }
+      } else {
+        # The socket has closed, so break the loop
+        last;
+      }
     }
 
-    foreach my $socket (@sockets) {
-        print $socket "JOIN #chat\r\n";
-    }
+    # Close the socket and exit the child process
+    close($socket);
+    exit(0);
+  }
 }
+
+# Wait for all child processes to finish
+while (wait() != -1) {}
+
+# Close the file
+close($fh);
