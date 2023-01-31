@@ -49,6 +49,6 @@ while (1) {
     }
 
     foreach my $socket (@sockets) {
-        print $socket "PING :irc.shoqni.com\r\n";
+        print $socket "JOIN #chat\r\n";
     }
 }
